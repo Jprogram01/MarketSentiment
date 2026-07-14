@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from marketsentiment.schemas import ClassifiedPost, HotStock, TickerAggregate
+from marketsentiment.schemas import ClassifiedPost, TickerAggregate
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS classified_posts (

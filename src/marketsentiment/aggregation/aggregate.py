@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from marketsentiment.schemas import ClassifiedPost, HotStock, Sentiment, TickerAggregate
+from marketsentiment.schemas import ClassifiedPost, HotStock, TickerAggregate
 
 
 def build_aggregates(classified: list[ClassifiedPost]) -> list[TickerAggregate]:
