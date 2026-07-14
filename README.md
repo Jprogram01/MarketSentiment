@@ -119,7 +119,7 @@ accuracy, per-class recall, latency, and cost:
 
 ```bash
 python -m marketsentiment.scripts.eval_compare --sample 200
-# add ANTHROPIC_API_KEY + `pip install langchain-anthropic` to fill in the Claude column ($/1k posts)
+# fills in the LLM column when OPENAI_API_KEY (gpt-4o-mini, cheap) or ANTHROPIC_API_KEY is set
 ```
 
 ## Layout

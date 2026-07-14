@@ -7,8 +7,9 @@ comparison is on data neither model trained on.
 
     python -m marketsentiment.scripts.eval_compare --model models/finbert-st --sample 200
 
-Claude side runs only if ANTHROPIC_API_KEY is set (it spends API credits — keep --sample
-modest). FinBERT side is free/local and always runs.
+The LLM side runs if OPENAI_API_KEY (uses gpt-4o-mini) or ANTHROPIC_API_KEY is set — it
+spends API credits, so keep --sample modest. Force one with --provider openai|anthropic.
+FinBERT side is free/local and always runs.
 """
 
 from __future__ import annotations
@@ -17,11 +18,15 @@ import argparse
 import os
 import time
 
-# $ per 1M tokens (input, output) — see the model catalog.
+# $ per 1M tokens (input, output) — approximate; edit to match current rates.
 _PRICING = {
     "claude-opus-4-8": (5.0, 25.0),
     "claude-sonnet-5": (3.0, 15.0),
     "claude-haiku-4-5": (1.0, 5.0),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.0),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1-nano": (0.10, 0.40),
 }
 
 
@@ -38,16 +43,25 @@ def _metrics(y_true, y_pred, labels):
     }
 
 
-def _run_claude(texts, gold, labels, model):
+def _make_chat(provider: str, model: str, max_tokens: int):
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI  # noqa: PLC0415
+
+        return ChatOpenAI(model=model, max_tokens=max_tokens)
+    from langchain_anthropic import ChatAnthropic  # noqa: PLC0415
+
+    return ChatAnthropic(model=model, max_tokens=max_tokens)
+
+
+def _run_llm(texts, gold, labels, provider, model):
     from typing import Literal
 
-    from langchain_anthropic import ChatAnthropic
     from pydantic import BaseModel
 
     class _S(BaseModel):
         label: Literal["bullish", "bearish", "neutral"]
 
-    chat = ChatAnthropic(model=model, max_tokens=64).with_structured_output(_S, include_raw=True)
+    chat = _make_chat(provider, model, 64).with_structured_output(_S, include_raw=True)
     preds, in_tok, out_tok = [], 0, 0
     t0 = time.perf_counter()
     for text in texts:
@@ -62,7 +76,7 @@ def _run_claude(texts, gold, labels, model):
         out_tok += usage.get("output_tokens", 0)
     elapsed = time.perf_counter() - t0
 
-    p_in, p_out = _PRICING.get(model, (5.0, 25.0))
+    p_in, p_out = _PRICING.get(model, (1.0, 3.0))
     cost = in_tok / 1e6 * p_in + out_tok / 1e6 * p_out
     return _metrics(gold, preds, labels), elapsed, {"cost": cost, "in": in_tok, "out": out_tok}
 
@@ -91,7 +105,8 @@ def main() -> None:
     parser.add_argument("--sample", type=int, default=200, help="Held-out posts for the head-to-head")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--test-size", type=float, default=0.2)
-    parser.add_argument("--llm-model", default="claude-opus-4-8")
+    parser.add_argument("--provider", choices=["auto", "openai", "anthropic"], default="auto")
+    parser.add_argument("--llm-model", default=None, help="default per provider (gpt-4o-mini / claude-opus-4-8)")
     args = parser.parse_args()
 
     import pandas as pd
@@ -117,14 +132,25 @@ def main() -> None:
     fb_pred = [r.label.value for r in fb.classify(texts)]
     rows = [("FinBERT (fine-tuned)", _metrics(gold, fb_pred, labels), time.perf_counter() - t0, None)]
 
-    if os.getenv("ANTHROPIC_API_KEY"):
+    provider = args.provider
+    if provider == "auto":
+        if os.getenv("OPENAI_API_KEY"):
+            provider = "openai"
+        elif os.getenv("ANTHROPIC_API_KEY"):
+            provider = "anthropic"
+        else:
+            provider = None
+    key_var = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider)
+    model = args.llm_model or ("gpt-4o-mini" if provider == "openai" else "claude-opus-4-8")
+
+    if provider and os.getenv(key_var):
         try:
-            m, elapsed, cost = _run_claude(texts, gold, labels, args.llm_model)
-            rows.append((f"Claude 0-shot ({args.llm_model})", m, elapsed, cost))
+            m, elapsed, cost = _run_llm(texts, gold, labels, provider, model)
+            rows.append((f"{model} (0-shot)", m, elapsed, cost))
         except Exception as exc:  # pragma: no cover
-            print(f"[claude skipped] {exc}")
+            print(f"[llm skipped] {exc}")
     else:
-        print("[claude skipped] set ANTHROPIC_API_KEY to include the LLM baseline")
+        print("[llm skipped] set OPENAI_API_KEY (or ANTHROPIC_API_KEY) to include the LLM baseline")
 
     _print_report(rows, labels, len(texts))
 
