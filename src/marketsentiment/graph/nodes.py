@@ -97,11 +97,11 @@ def make_aggregate_node(min_mentions: int, top_n: int):
     return aggregate
 
 
-def make_synthesize_node(model: str, max_tokens: int):
+def make_synthesize_node(provider: str, model: str, max_tokens: int):
     def synthesize(state: PipelineState) -> PipelineState:
         from marketsentiment.sentiment.llm import build_daily_brief
 
-        brief = build_daily_brief(state["aggregates"], state["hot"], model, max_tokens)
+        brief = build_daily_brief(state["aggregates"], state["hot"], provider, model, max_tokens)
         log.info("synthesize.done", chars=len(brief))
         return {"brief": brief}
 

@@ -15,9 +15,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- LLM (read straight from ANTHROPIC_API_KEY, no prefix) ---
+    # --- LLM (keys read from OPENAI_API_KEY / ANTHROPIC_API_KEY, no MS_ prefix) ---
+    llm_provider: str = "auto"  # "auto" (openai if key, else anthropic) | "openai" | "anthropic"
+    openai_api_key: str | None = None
     anthropic_api_key: str | None = None
-    llm_model: str = "claude-opus-4-8"
+    llm_model: str | None = None  # None -> per-provider default
     llm_max_tokens: int = 1024
 
     # --- Sources ---
@@ -38,11 +40,35 @@ class Settings(BaseSettings):
     # --- Storage ---
     db_path: str = "data/marketsentiment.duckdb"
 
-    def __init__(self, **kwargs):  # noqa: D401 - pull ANTHROPIC_API_KEY (unprefixed)
+    def __init__(self, **kwargs):  # noqa: D401 - pull provider keys (unprefixed)
         import os
 
+        kwargs.setdefault("openai_api_key", os.getenv("OPENAI_API_KEY"))
         kwargs.setdefault("anthropic_api_key", os.getenv("ANTHROPIC_API_KEY"))
         super().__init__(**kwargs)
+
+    def resolved_provider(self) -> str | None:
+        """The active LLM provider, or None if no key is available."""
+        if self.llm_provider != "auto":
+            return self.llm_provider
+        if self.openai_api_key:
+            return "openai"
+        if self.anthropic_api_key:
+            return "anthropic"
+        return None
+
+    def resolved_model(self) -> str:
+        if self.llm_model:
+            return self.llm_model
+        return "gpt-4o-mini" if self.resolved_provider() == "openai" else "claude-opus-4-8"
+
+    def llm_enabled(self) -> bool:
+        provider = self.resolved_provider()
+        if provider == "openai":
+            return bool(self.openai_api_key)
+        if provider == "anthropic":
+            return bool(self.anthropic_api_key)
+        return False
 
 
 @lru_cache

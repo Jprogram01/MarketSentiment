@@ -63,8 +63,9 @@ make run                      # http://localhost:8000/docs
 # or: make docker
 ```
 
-Runs on **FinBERT alone with no API key**. Set `ANTHROPIC_API_KEY` to enable the LLM
-low-confidence fallback + daily synthesis; set `LANGCHAIN_TRACING_V2=true` for LangSmith.
+Runs on **FinBERT alone with no API key**. Set `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`)
+to enable the LLM low-confidence fallback + daily synthesis — provider is auto-detected,
+defaulting to OpenAI `gpt-4o-mini`. Set `LANGCHAIN_TRACING_V2=true` for LangSmith.
 
 ### API
 

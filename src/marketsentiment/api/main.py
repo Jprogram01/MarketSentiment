@@ -33,7 +33,8 @@ async def lifespan(app: FastAPI):
         "startup",
         backend=settings.sentiment_backend,
         llm_available=app.state.llm_available,
-        model=settings.llm_model,
+        provider=settings.resolved_provider(),
+        model=settings.resolved_model(),
     )
     yield
     app.state.db.close()

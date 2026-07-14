@@ -1,10 +1,9 @@
-"""LLM sentiment + synthesis via Claude (LangChain ``ChatAnthropic``).
+"""LLM sentiment + synthesis, provider-agnostic (OpenAI or Anthropic via LangChain).
 
-Three jobs, all through the official Anthropic integration:
-  1. LLMClassifier  — zero-shot sentiment baseline to compare against FinBERT, and
-     the fallback for low-confidence FinBERT predictions (the graph's conditional edge).
-  2. disambiguate_tickers — resolve ambiguous symbols ("apple" the company vs fruit).
-  3. build_daily_brief — the synthesis node: turn aggregates into a readable briefing.
+Three jobs, all behind one ``_make_chat`` so the provider is a config switch:
+  1. LLMClassifier  — zero-shot sentiment baseline / low-confidence FinBERT fallback.
+  2. build_daily_brief — the synthesis node: aggregates -> readable briefing.
+  3. disambiguate_tickers — resolve ambiguous symbols (stub hook).
 """
 
 from __future__ import annotations
@@ -15,13 +14,26 @@ from pydantic import BaseModel, Field
 
 from marketsentiment.schemas import HotStock, Sentiment, SentimentResult, TickerAggregate
 
-_DEFAULT_MODEL = "claude-opus-4-8"
-
 _SENTIMENT_LABELS = {
     "bullish": Sentiment.BULLISH,
     "bearish": Sentiment.BEARISH,
     "neutral": Sentiment.NEUTRAL,
 }
+
+# Definitions + few-shot — keeps the LLM from over-flagging neutral posts (see eval_compare).
+_CLS_SYSTEM = (
+    "Label the market sentiment of a financial social-media post as exactly one of "
+    "bullish, bearish, or neutral.\n"
+    "- bullish: implies the stock/market goes up, or clearly positive sentiment.\n"
+    "- bearish: implies it goes down, or clearly negative sentiment.\n"
+    "- neutral: factual reporting, a question, or mixed/no directional view. Most plain "
+    "statements of fact and news headlines are neutral — do NOT infer sentiment that is "
+    "not actually expressed.\n"
+    "Account for sarcasm and emoji. Examples:\n"
+    "  '$AAPL breaking out, to the moon' -> bullish\n"
+    "  'Tesla recalls 100k cars over a brake defect' -> bearish\n"
+    "  'Apple reports earnings Thursday after the bell' -> neutral"
+)
 
 
 class _LLMSentiment(BaseModel):
@@ -29,32 +41,35 @@ class _LLMSentiment(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-def _make_chat(model: str, max_tokens: int):
-    # Imported lazily so the package imports without langchain-anthropic installed.
+def _make_chat(provider: str, model: str, max_tokens: int):
+    """Build a LangChain chat model for the given provider (imported lazily)."""
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI  # noqa: PLC0415
+
+        return ChatOpenAI(model=model, max_tokens=max_tokens)
     from langchain_anthropic import ChatAnthropic  # noqa: PLC0415
 
     return ChatAnthropic(model=model, max_tokens=max_tokens)
 
 
 class LLMClassifier:
-    """Zero-shot financial sentiment using structured output."""
+    """Zero-shot financial sentiment via structured output."""
 
-    def __init__(self, model: str = _DEFAULT_MODEL, max_tokens: int = 256):
+    def __init__(self, provider: str = "openai", model: str = "gpt-4o-mini", max_tokens: int = 64):
+        self._provider = provider
         self._model = model
-        self._chat = _make_chat(model, max_tokens).with_structured_output(_LLMSentiment)
+        self._chat = _make_chat(provider, model, max_tokens).with_structured_output(_LLMSentiment)
 
     def classify(self, texts: list[str]) -> list[SentimentResult]:
         results: list[SentimentResult] = []
         for text in texts:
-            prompt = (
-                "Classify the market sentiment of this social-media post about a stock. "
-                "Consider sarcasm and emoji (🚀 = bullish). Post:\n\n" + text
+            parsed: _LLMSentiment = self._chat.invoke(  # type: ignore[assignment]
+                [("system", _CLS_SYSTEM), ("human", f"Post:\n{text}")]
             )
-            parsed: _LLMSentiment = self._chat.invoke(prompt)  # type: ignore[assignment]
             results.append(
                 SentimentResult(
                     label=_SENTIMENT_LABELS[parsed.label],
-                    confidence=parsed.confidence,
+                    confidence=float(parsed.confidence),
                     model=f"{self._model} (zero-shot)",
                 )
             )
@@ -64,15 +79,16 @@ class LLMClassifier:
 def build_daily_brief(
     aggregates: list[TickerAggregate],
     hot: list[HotStock],
-    model: str = _DEFAULT_MODEL,
+    provider: str = "openai",
+    model: str = "gpt-4o-mini",
     max_tokens: int = 1024,
 ) -> str:
     """Synthesis node: a short, descriptive market-sentiment briefing.
 
-    Descriptive by design — this reports what the internet is saying and how fast it's
-    moving. It is NOT investment advice and must not recommend trades.
+    Descriptive by design — reports what chatter is saying and how fast it's moving.
+    NOT investment advice; must not recommend trades.
     """
-    chat = _make_chat(model, max_tokens)
+    chat = _make_chat(provider, model, max_tokens)
     hot_lines = "\n".join(
         f"- ${h.symbol}: {h.n_mentions} mentions, score {h.sentiment_score:+.2f} ({h.reason})"
         for h in hot
@@ -88,10 +104,8 @@ def build_daily_brief(
     return resp.content if isinstance(resp.content, str) else str(resp.content)
 
 
-def disambiguate_tickers(candidates: list[str], text: str, model: str = _DEFAULT_MODEL) -> list[str]:
-    """Given candidate symbols and their source text, drop ones used non-financially.
-
-    Stub hook for the graph's conditional re-route — implement with a structured-output
-    call that returns the subset actually referring to a tradeable security.
-    """
+def disambiguate_tickers(
+    candidates: list[str], text: str, provider: str = "openai", model: str = "gpt-4o-mini"
+) -> list[str]:
+    """Drop candidate symbols used non-financially. Stub hook for the graph's re-route."""
     raise NotImplementedError("Wire a structured-output call; see module docstring.")

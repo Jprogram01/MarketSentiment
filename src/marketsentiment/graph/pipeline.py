@@ -48,7 +48,11 @@ def build_graph(
         ),
     )
     graph.add_node("aggregate", make_aggregate_node(settings.hot_min_mentions, settings.hot_top_n))
-    graph.add_node("synthesize", make_synthesize_node(settings.llm_model, settings.llm_max_tokens))
+    provider = settings.resolved_provider() or "openai"
+    graph.add_node(
+        "synthesize",
+        make_synthesize_node(provider, settings.resolved_model(), settings.llm_max_tokens),
+    )
 
     graph.add_edge(START, "ingest")
     graph.add_edge("ingest", "classify")
@@ -77,12 +81,14 @@ def build_default_graph(settings: Settings):
         FourChanBizSource(),
     ]
 
-    llm_available = bool(settings.anthropic_api_key)
+    provider = settings.resolved_provider()
+    model = settings.resolved_model()
+    llm_available = settings.llm_enabled()
 
     if settings.sentiment_backend == "llm" and llm_available:
         from marketsentiment.sentiment.llm import LLMClassifier
 
-        classifier: SentimentClassifier = LLMClassifier(settings.llm_model)
+        classifier: SentimentClassifier = LLMClassifier(provider, model)
         llm_classifier = None  # already the primary
     else:
         from marketsentiment.sentiment.finbert import FinBERTClassifier
@@ -92,7 +98,7 @@ def build_default_graph(settings: Settings):
         if llm_available:
             from marketsentiment.sentiment.llm import LLMClassifier
 
-            llm_classifier = LLMClassifier(settings.llm_model)
+            llm_classifier = LLMClassifier(provider, model)
 
     graph = build_graph(
         sources=sources,
