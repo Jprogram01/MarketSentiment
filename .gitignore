@@ -27,3 +27,7 @@ models/
 # OS
 .DS_Store
 Thumbs.db
+
+# AWS SAM — samconfig.toml stores deploy params incl. the OpenAI key; never commit
+.aws-sam/
+samconfig.toml
