@@ -1,0 +1,17 @@
+# Lambda container image running the fine-tuned FinBERT for classification.
+# Heavier than Dockerfile.lambda (bundles torch + your model), but classifies with
+# the model that beat the LLM in the eval. Synthesis still uses the LLM (OpenAI).
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+# Bundle the fine-tuned model (safetensors, ~440MB) so there's no runtime download.
+COPY models/finbert-st /opt/model
+
+# CPU-only torch — Lambda has no GPU, and the default (CUDA) build would add ~2.5GB
+# of unusable libraries. Installed from the PyTorch CPU index before the rest.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir transformers ".[serverless]"
+
+CMD ["marketsentiment.scripts.daily_digest.lambda_handler"]

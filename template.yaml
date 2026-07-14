@@ -2,13 +2,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
   MarketSentiment daily digest — an EventBridge-scheduled Lambda that runs the
-  sentiment pipeline (LLM backend) and emails a brief via SES.
+  sentiment pipeline (fine-tuned FinBERT classifier + LLM synthesis) and emails a
+  brief via SES.
 
 Parameters:
   OpenAIApiKey:
     Type: String
     NoEcho: true
-    Description: OpenAI API key for the LLM sentiment + synthesis nodes.
+    Description: OpenAI API key for the LLM synthesis node + low-confidence fallback.
   DigestFrom:
     Type: String
     Description: SES-verified sender address (From).
@@ -28,12 +29,13 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
-      MemorySize: 1024
-      Timeout: 600            # 10 min — plenty for a few hundred LLM classifications
+      MemorySize: 3008          # torch + BERT need headroom; more memory = more CPU too
+      Timeout: 600              # 10 min — FinBERT CPU inference + synthesis
       Architectures: [x86_64]
       Environment:
         Variables:
-          MS_SENTIMENT_BACKEND: llm
+          MS_SENTIMENT_BACKEND: finbert
+          MS_FINBERT_MODEL: /opt/model              # the model bundled into the image
           MS_DB_PATH: /tmp/marketsentiment.duckdb   # Lambda fs is read-only except /tmp
           OPENAI_API_KEY: !Ref OpenAIApiKey
           MS_DIGEST_FROM: !Ref DigestFrom
@@ -50,7 +52,7 @@ Resources:
             ScheduleExpression: !Ref ScheduleExpression
             ScheduleExpressionTimezone: !Ref ScheduleTimezone
     Metadata:
-      Dockerfile: Dockerfile.lambda
+      Dockerfile: Dockerfile.lambda.finbert
       DockerContext: .
       DockerTag: latest
 

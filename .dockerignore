@@ -9,6 +9,8 @@ __pycache__
 data/*.duckdb
 data/*.parquet
 data/raw
-models
+models/*
+!models/finbert-st
+models/finbert-st/checkpoint-*
 .env
 README.pdf
