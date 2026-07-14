@@ -25,9 +25,27 @@ _PRICING = {
     "claude-haiku-4-5": (1.0, 5.0),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.0),
+    "gpt-4.1": (2.0, 8.0),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1-nano": (0.10, 0.40),
 }
+
+# Definitions + few-shot to fix the LLM's over-flagging of neutral posts.
+_SYSTEM_PROMPT = (
+    "Label the market sentiment of a financial social-media post as exactly one of "
+    "bullish, bearish, or neutral.\n"
+    "- bullish: implies the stock/market goes up, or clearly positive sentiment.\n"
+    "- bearish: implies it goes down, or clearly negative sentiment.\n"
+    "- neutral: factual reporting, a question, or mixed/no directional view. Most plain "
+    "statements of fact and news headlines are neutral — do NOT infer sentiment that is "
+    "not actually expressed.\n"
+    "Account for sarcasm and emoji (rockets/charts up = bullish, chart down = bearish).\n"
+    "Examples:\n"
+    "  '$AAPL breaking out, to the moon' -> bullish\n"
+    "  'Tesla recalls 100k cars over a brake defect' -> bearish\n"
+    "  'Apple reports earnings Thursday after the bell' -> neutral\n"
+    "  'Is $NVDA overvalued here?' -> neutral"
+)
 
 
 def _metrics(y_true, y_pred, labels):
@@ -65,10 +83,7 @@ def _run_llm(texts, gold, labels, provider, model):
     preds, in_tok, out_tok = [], 0, 0
     t0 = time.perf_counter()
     for text in texts:
-        res = chat.invoke(
-            "Classify the market sentiment (bullish/bearish/neutral) of this post. "
-            "Consider sarcasm and emoji. Post:\n\n" + text
-        )
+        res = chat.invoke([("system", _SYSTEM_PROMPT), ("human", f"Post:\n{text}")])
         parsed = res["parsed"]
         preds.append(parsed.label if parsed else "neutral")
         usage = getattr(res["raw"], "usage_metadata", None) or {}

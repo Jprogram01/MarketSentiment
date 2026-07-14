@@ -114,13 +114,27 @@ Held-out test (2,387 posts):
 The point: bearish is only 15% of the data, yet its recall holds at **~0.77** rather than
 collapsing toward zero — the class-weighted loss earning its keep.
 
-**FinBERT vs. Claude head-to-head** — run both on the same held-out split and compare
+**FinBERT vs. LLM head-to-head** — run both on the same held-out split and compare
 accuracy, per-class recall, latency, and cost:
 
 ```bash
 python -m marketsentiment.scripts.eval_compare --sample 200
-# fills in the LLM column when OPENAI_API_KEY (gpt-4o-mini, cheap) or ANTHROPIC_API_KEY is set
+# uses OPENAI_API_KEY (gpt-4o-mini) or ANTHROPIC_API_KEY; stronger model: --llm-model gpt-4o
 ```
+
+Example run (200 held-out posts, `gpt-4o-mini` zero-shot):
+
+| system | acc | macro-F1 | R:bearish | R:bullish | R:neutral | ms/post | $/1k |
+|--------|:---:|:--------:|:---------:|:---------:|:---------:|:-------:|:----:|
+| **FinBERT (fine-tuned)** | **0.86** | **0.81** | 0.67 | 0.80 | 0.92 | 69 | free |
+| gpt-4o-mini (0-shot) | 0.66 | 0.64 | **0.93** | 0.72 | 0.57 | 642 | 0.02 |
+
+The fine-tuned model wins on accuracy/F1 and is ~9× faster and free — it learned this
+data's neutral-heavy base rates. The LLM shows the **opposite error profile**: excellent
+bearish recall, but it over-flags sentiment so neutral recall collapses. That contrast —
+a domain fine-tune vs. general zero-shot — is the engineering point. (200-sample numbers
+are noisy; class definitions + few-shot in the prompt and a stronger model narrow the
+gap — the fine-tuning-vs-prompt-engineering tradeoff.)
 
 ## Layout
 
