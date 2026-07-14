@@ -97,7 +97,7 @@ def _run_llm(texts, gold, labels, provider, model):
 
 
 def _print_report(rows, labels, n):
-    print(f"\n=== FinBERT vs. Claude — {n} held-out posts ===\n")
+    print(f"\n=== FinBERT vs. LLM — {n} held-out posts ===\n")
     head = f"{'system':<30}{'acc':>7}{'macroF1':>9}"
     head += "".join(f"{'R:' + lab:>12}" for lab in labels)
     head += f"{'ms/post':>10}{'$/1k':>9}"

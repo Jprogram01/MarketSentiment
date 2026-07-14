@@ -122,19 +122,26 @@ python -m marketsentiment.scripts.eval_compare --sample 200
 # uses OPENAI_API_KEY (gpt-4o-mini) or ANTHROPIC_API_KEY; stronger model: --llm-model gpt-4o
 ```
 
-Example run (200 held-out posts, `gpt-4o-mini` zero-shot):
+Example run (200 held-out posts; LLMs zero-shot with a definitions + few-shot prompt):
 
 | system | acc | macro-F1 | R:bearish | R:bullish | R:neutral | ms/post | $/1k |
 |--------|:---:|:--------:|:---------:|:---------:|:---------:|:-------:|:----:|
-| **FinBERT (fine-tuned)** | **0.86** | **0.81** | 0.67 | 0.80 | 0.92 | 69 | free |
-| gpt-4o-mini (0-shot) | 0.66 | 0.64 | **0.93** | 0.72 | 0.57 | 642 | 0.02 |
+| **FinBERT (fine-tuned)** | **0.86** | **0.81** | 0.67 | 0.80 | 0.92 | ~80 | free |
+| gpt-4o-mini (0-shot) | 0.81 | 0.76 | 0.70 | 0.58 | 0.90 | 598 | 0.04 |
+| gpt-4o (0-shot) | 0.79 | 0.75 | **0.83** | 0.65 | 0.82 | 550 | 0.67 |
 
-The fine-tuned model wins on accuracy/F1 and is ~9× faster and free — it learned this
-data's neutral-heavy base rates. The LLM shows the **opposite error profile**: excellent
-bearish recall, but it over-flags sentiment so neutral recall collapses. That contrast —
-a domain fine-tune vs. general zero-shot — is the engineering point. (200-sample numbers
-are noisy; class definitions + few-shot in the prompt and a stronger model narrow the
-gap — the fine-tuning-vs-prompt-engineering tradeoff.)
+Three findings worth stating in an interview:
+
+1. **The fine-tuned model wins** on accuracy and macro-F1 — while being free and ~7× faster.
+   It learned this data's neutral-heavy base rates; the LLMs don't know them.
+2. **Prompt > model size here.** A definitions + few-shot prompt lifted gpt-4o-mini from
+   0.66 → 0.81 accuracy; upgrading mini → gpt-4o (≈17× the cost) *lowered* accuracy slightly.
+   The bigger model was not the answer.
+3. **The LLM's edge is bearish recall** (gpt-4o 0.83) — LLMs are good at spotting negativity.
+   So the natural role for the LLM here is the low-confidence fallback that catches negatives
+   FinBERT misses — exactly the conditional re-route the graph already supports.
+
+(200-sample numbers are noisy; run `--sample 2400` for the full held-out set.)
 
 ## Layout
 
