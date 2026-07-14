@@ -5,7 +5,11 @@ FROM public.ecr.aws/lambda/python:3.11
 # Install the package + AWS deps into the Lambda task root.
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[serverless]"
+# Upgrade pip first so it installs prebuilt wheels (e.g. tiktoken) instead of
+# building from source — the base image's pip 24.0 falls back to an sdist that
+# needs a Rust compiler the image doesn't have.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir ".[serverless]"
 
 # Handler: module.function
 CMD ["marketsentiment.scripts.daily_digest.lambda_handler"]
