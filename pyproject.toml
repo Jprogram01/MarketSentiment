@@ -30,6 +30,7 @@ dependencies = [
 finbert = [
     "torch>=2.2",
     "transformers>=4.40",
+    "accelerate>=0.26",
     "datasets>=2.19",
     "scikit-learn>=1.4",
     "pandas>=2.2",

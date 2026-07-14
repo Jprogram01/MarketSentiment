@@ -79,19 +79,42 @@ low-confidence fallback + daily synthesis; set `LANGCHAIN_TRACING_V2=true` for L
 ## The ML loop (the part to talk about in interviews)
 
 ```bash
-# 1. Harvest StockTwits self-labels → data/labeled.csv (free supervised data)
-python -m marketsentiment.scripts.harvest_labels --symbols AAPL NVDA TSLA --out data/labeled.csv
+# 1. Get labeled data — a public set (recommended, no scraping)…
+python -m marketsentiment.scripts.prepare_dataset --out data/labeled.csv
+#    …or harvest StockTwits self-labels: harvest_labels --symbols AAPL NVDA TSLA --out data/labeled.csv
 
-# 2. Fine-tune FinBERT with class weights for the bullish/bearish imbalance (skeleton)
+# 2. (torch < 2.6 only) FinBERT's base ships .bin-only weights transformers 5 won't
+#    load on old torch — convert once to safetensors:
+python -m marketsentiment.scripts.convert_to_safetensors --out models/finbert-base-st
+
+# 3. Fine-tune with class-weighted loss (add --base-model models/finbert-base-st if you did step 2)
 python -m marketsentiment.scripts.train_finbert --data data/labeled.csv --out models/finbert-st
 
-# 3. Serve the fine-tuned checkpoint
-export MS_FINBERT_MODEL=models/finbert-st
+# 4. Serve the fine-tuned checkpoint
+export MS_FINBERT_MODEL=models/finbert-st   # PowerShell: $env:MS_FINBERT_MODEL="models/finbert-st"
 ```
 
-Report **per-class recall** — the minority (bearish) class recall is what proves the
-imbalance handling worked. Compare fine-tuned FinBERT vs. the LLM zero-shot baseline
-(`MS_SENTIMENT_BACKEND=llm`) on cost / latency / accuracy.
+Prefer training on **Google Colab** — a self-contained GPU notebook is at
+`notebooks/train_colab.ipynb`.
+
+### Results (first fine-tune)
+
+`ProsusAI/finbert` fine-tuned on ~11.9k labeled finance posts
+(`zeroshot/twitter-financial-news-sentiment`), 3 epochs, class-weighted loss.
+Held-out test (2,387 posts):
+
+| Class | Precision | Recall | F1 | Support |
+|-------|:---------:|:------:|:--:|:-------:|
+| bearish · minority (15%) | 0.77 | **0.77** | 0.77 | 358 |
+| bullish | 0.82 | 0.79 | 0.81 | 480 |
+| neutral · majority (65%) | 0.91 | 0.92 | 0.91 | 1549 |
+| **accuracy** | | | **0.87** | 2387 |
+| **macro-F1** | | | **0.83** | 2387 |
+
+The point: bearish is only 15% of the data, yet its recall holds at **~0.77** rather than
+collapsing toward zero — the class-weighted loss earning its keep. The script reports
+per-class recall every epoch; compare fine-tuned FinBERT against the LLM zero-shot
+baseline (`MS_SENTIMENT_BACKEND=llm`) on cost / latency / accuracy.
 
 ## Layout
 
@@ -107,7 +130,9 @@ src/marketsentiment/
   storage/db.py        DuckDB persistence
   api/main.py          FastAPI service
   runner.py            run-once + persist (shared by API and CLI)
-  scripts/             run_pipeline, harvest_labels, train_finbert
+  scripts/             prepare_dataset, harvest_labels, convert_to_safetensors,
+                       train_finbert, run_pipeline
+notebooks/             train_colab.ipynb — Colab GPU fine-tune
 tests/                 unit tests (ticker extraction, aggregation) — no heavy deps
 ```
 

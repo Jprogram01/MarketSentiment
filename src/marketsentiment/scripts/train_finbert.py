@@ -142,12 +142,14 @@ def main() -> None:
         report_to="none",
     )
 
+    # NB: the tokenizer isn't passed to Trainer — its arg name changed across
+    # transformers versions (tokenizer -> processing_class). We supply an explicit
+    # data_collator for padding and save the tokenizer separately below.
     trainer = WeightedTrainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        tokenizer=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer),
         compute_metrics=compute_metrics,
     )
