@@ -36,6 +36,8 @@ finbert = [
     "scikit-learn>=1.4",
     "pandas>=2.2",
 ]
+# AWS Lambda daily-digest deployment (SES email, optional S3-backed DuckDB)
+serverless = ["boto3>=1.34"]
 # Extra source connectors
 reddit = ["praw>=7.7"]
 bluesky = ["atproto>=0.0.46"]

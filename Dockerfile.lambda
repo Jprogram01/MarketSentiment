@@ -1,0 +1,11 @@
+# Lambda container image for the scheduled daily digest.
+# Uses the LLM sentiment backend (no torch), so the image stays lean.
+FROM public.ecr.aws/lambda/python:3.11
+
+# Install the package + AWS deps into the Lambda task root.
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir ".[serverless]"
+
+# Handler: module.function
+CMD ["marketsentiment.scripts.daily_digest.lambda_handler"]

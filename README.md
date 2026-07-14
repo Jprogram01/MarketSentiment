@@ -159,7 +159,7 @@ src/marketsentiment/
   api/main.py          FastAPI service
   runner.py            run-once + persist (shared by API and CLI)
   scripts/             prepare_dataset, harvest_labels, convert_to_safetensors,
-                       train_finbert, eval_compare, run_pipeline
+                       train_finbert, eval_compare, run_pipeline, daily_digest
 notebooks/             train_colab.ipynb — Colab GPU fine-tune
 tests/                 unit tests (ticker extraction, aggregation) — no heavy deps
 ```
@@ -169,8 +169,15 @@ tests/                 unit tests (ticker extraction, aggregation) — no heavy 
 - Wire the Reddit (PRAW) and Bluesky (atproto) sources — the ingestion layer is already
   pluggable.
 - Promote the low-confidence LLM fallback + ticker disambiguation to explicit graph nodes.
-- Schedule daily runs (cron), swap `MemorySaver` for a persistent checkpointer.
+- Swap `MemorySaver` for a persistent checkpointer to enable durable, resumable runs.
 - Dashboard over the DuckDB aggregates.
+
+## Scheduled daily digest
+
+A serverless job (AWS Lambda + EventBridge Scheduler + SES) runs the pipeline once a day
+and emails a sentiment brief. Runs on the LLM backend, so there's no torch to package —
+`sam build && sam deploy`. Setup in **[DEPLOY.md](DEPLOY.md)**; entrypoint is
+`scripts/daily_digest.py`.
 
 ## License
 
