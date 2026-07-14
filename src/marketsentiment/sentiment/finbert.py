@@ -24,7 +24,8 @@ _LABEL_MAP = {
 
 
 class FinBERTClassifier:
-    def __init__(self, model_name: str = "ProsusAI/finbert", device: int = -1):
+    def __init__(self, model_name: str = "ProsusAI/finbert", device: int | None = None):
+        # device=None auto-selects GPU when available; pass an int to force (0=cuda:0, -1=cpu).
         self._model_name = model_name
         self._device = device
         self._pipe = None  # lazily constructed
@@ -39,11 +40,21 @@ class FinBERTClassifier:
                 "FinBERT backend needs torch + transformers. "
                 'Install with: pip install -e ".[finbert]"'
             ) from exc
-        log.info("finbert.loading", model=self._model_name)
+
+        device = self._device
+        if device is None:
+            try:
+                import torch  # noqa: PLC0415
+
+                device = 0 if torch.cuda.is_available() else -1
+            except ImportError:  # pragma: no cover
+                device = -1
+
+        log.info("finbert.loading", model=self._model_name, device=device)
         self._pipe = pipeline(
             "text-classification",
             model=self._model_name,
-            device=self._device,
+            device=device,
             truncation=True,
         )
 

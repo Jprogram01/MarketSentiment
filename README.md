@@ -112,9 +112,15 @@ Held-out test (2,387 posts):
 | **macro-F1** | | | **0.83** | 2387 |
 
 The point: bearish is only 15% of the data, yet its recall holds at **~0.77** rather than
-collapsing toward zero — the class-weighted loss earning its keep. The script reports
-per-class recall every epoch; compare fine-tuned FinBERT against the LLM zero-shot
-baseline (`MS_SENTIMENT_BACKEND=llm`) on cost / latency / accuracy.
+collapsing toward zero — the class-weighted loss earning its keep.
+
+**FinBERT vs. Claude head-to-head** — run both on the same held-out split and compare
+accuracy, per-class recall, latency, and cost:
+
+```bash
+python -m marketsentiment.scripts.eval_compare --sample 200
+# add ANTHROPIC_API_KEY + `pip install langchain-anthropic` to fill in the Claude column ($/1k posts)
+```
 
 ## Layout
 
@@ -131,7 +137,7 @@ src/marketsentiment/
   api/main.py          FastAPI service
   runner.py            run-once + persist (shared by API and CLI)
   scripts/             prepare_dataset, harvest_labels, convert_to_safetensors,
-                       train_finbert, run_pipeline
+                       train_finbert, eval_compare, run_pipeline
 notebooks/             train_colab.ipynb — Colab GPU fine-tune
 tests/                 unit tests (ticker extraction, aggregation) — no heavy deps
 ```
