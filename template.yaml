@@ -36,6 +36,8 @@ Resources:
         Variables:
           MS_SENTIMENT_BACKEND: finbert
           MS_FINBERT_MODEL: /opt/model              # the model bundled into the image
+          MS_HOT_MIN_MENTIONS: "3"                  # lower threshold -> more tickers shown
+          MS_HOT_TOP_N: "20"
           MS_DB_PATH: /tmp/marketsentiment.duckdb   # Lambda fs is read-only except /tmp
           OPENAI_API_KEY: !Ref OpenAIApiKey
           MS_DIGEST_FROM: !Ref DigestFrom

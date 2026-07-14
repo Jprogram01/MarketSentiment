@@ -41,12 +41,16 @@ class _LLMSentiment(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-def _make_chat(provider: str, model: str, max_tokens: int):
-    """Build a LangChain chat model for the given provider (imported lazily)."""
+def _make_chat(provider: str, model: str, max_tokens: int, temperature: float = 0.0):
+    """Build a LangChain chat model for the given provider (imported lazily).
+
+    temperature defaults to 0 for consistency — sentiment labels shouldn't wander
+    run-to-run. Not passed to Anthropic: newer Claude models reject the parameter.
+    """
     if provider == "openai":
         from langchain_openai import ChatOpenAI  # noqa: PLC0415
 
-        return ChatOpenAI(model=model, max_tokens=max_tokens)
+        return ChatOpenAI(model=model, max_tokens=max_tokens, temperature=temperature)
     from langchain_anthropic import ChatAnthropic  # noqa: PLC0415
 
     return ChatAnthropic(model=model, max_tokens=max_tokens)
@@ -94,11 +98,13 @@ def build_daily_brief(
         for h in hot
     )
     prompt = (
-        "You are a market-sentiment analyst. Using ONLY the aggregated social-sentiment "
-        "data below, write a concise daily briefing (<200 words) on what retail social "
-        "chatter is saying and where momentum is shifting. Be descriptive, cite the "
-        "numbers, and do NOT give buy/sell/hold recommendations or investment advice.\n\n"
-        f"Hot tickers:\n{hot_lines}\n"
+        "You are a market-sentiment analyst. For EACH ticker below, write one line: the "
+        "ticker, the company name and a few words on what it does, then the retail "
+        "sentiment read citing the numbers (mentions + score). If you are NOT confident "
+        "what a ticker refers to, write '(company unclear)' instead of guessing. After the "
+        "per-ticker lines, add a one-sentence overall takeaway. Keep it tight. This is "
+        "sentiment measurement, NOT investment advice — do not recommend trades.\n\n"
+        f"Tickers:\n{hot_lines}\n"
     )
     resp = chat.invoke(prompt)
     return resp.content if isinstance(resp.content, str) else str(resp.content)
