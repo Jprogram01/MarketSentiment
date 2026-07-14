@@ -1,7 +1,7 @@
 [project]
 name = "marketsentiment"
 version = "0.1.0"
-description = "Agentic pipeline that measures financial-market sentiment across social sources (StockTwits, 4chan /biz/, Reddit, Bluesky) using LangGraph + FinBERT + Claude."
+description = "Agentic pipeline that measures financial-market sentiment across social sources (StockTwits, 4chan /biz/, Reddit, Bluesky) using LangGraph + FinBERT + LLMs (OpenAI/Anthropic)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

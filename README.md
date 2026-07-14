@@ -5,8 +5,8 @@ online market-chatter spaces, extracts the tickers being discussed, classifies b
 / bearish / neutral sentiment, aggregates it per stock, flags "hot" tickers by volume
 and momentum, and writes a short daily briefing.
 
-Orchestrated with **LangGraph**, with **FinBERT** as the sentiment workhorse and
-**Claude** (via `langchain-anthropic`) for ticker disambiguation and synthesis.
+Orchestrated with **LangGraph**, with a fine-tuned **FinBERT** as the sentiment workhorse
+and an **LLM** (OpenAI or Anthropic, via LangChain) for ticker disambiguation and synthesis.
 
 > ⚠️ **Not investment advice.** This measures what the internet is *saying* about
 > stocks and how fast that's changing. It does not recommend trades and must not be
@@ -16,18 +16,18 @@ Orchestrated with **LangGraph**, with **FinBERT** as the sentiment workhorse and
 
 ## Why this design
 
-- **It's a data-engineering + NLP + MLOps system, not a chatbot.** The interview value
-  is the pipeline: pluggable ingestion, ticker disambiguation, a fine-tunable classifier,
-  aggregation/velocity, and a served + observable deployment.
+- **A data-engineering + NLP + MLOps system, not a chatbot.** The emphasis is the
+  engineering pipeline: pluggable ingestion, ticker disambiguation, a fine-tunable
+  classifier, aggregation/velocity, and a served, observable deployment.
 - **StockTwits is the anchor source** because users self-tag posts **Bullish/Bearish** —
-  free labeled financial-sentiment data. Harvest it, fine-tune FinBERT on it, and
-  evaluate. The class imbalance (chatter skews bullish) is the engineering story, the
-  same shape as a queen-vs-worker imbalance problem: data pipeline + weighted loss.
+  free labeled financial-sentiment data to fine-tune and evaluate on. The class imbalance
+  (chatter skews heavily toward one class) is the core modeling challenge, addressed with a
+  data pipeline plus a class-weighted loss.
 - **LangGraph over a plain chain** because the flow branches and re-routes: low-confidence
   FinBERT predictions escalate to the LLM, and synthesis only runs when there's something
   to brief on. Shared, checkpointed state makes runs resumable and inspectable.
-- **X was descoped on purpose.** Its API is $100+/mo and scraping violates ToS, so
-  **Bluesky** is the open substitute. That's a mature engineering decision, documented.
+- **X was descoped deliberately.** Its API is $100+/mo and scraping violates its ToS, so
+  **Bluesky** (open `atproto` API) is the substitute — the ingestion layer stays pluggable.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ Orchestrated with **LangGraph**, with **FinBERT** as the sentiment workhorse and
 │ Reddit      (stub)│              │  └─ low-confidence ──▶ LLM re-classify
 │ Bluesky     (stub)│              │                        (conditional)
 └───────────────────┘              ▼
-                          FinBERT  ·  Claude (langchain-anthropic)
+                          FinBERT  ·  LLM (OpenAI / Anthropic)
                                           │
                         DuckDB  ◀─────────┘   FastAPI  ·  Docker  ·  LangSmith tracing
 ```
@@ -51,7 +51,7 @@ vs. the previous run.
 ## Quickstart
 
 ```bash
-cp .env.example .env          # add ANTHROPIC_API_KEY (optional) + tokens
+cp .env.example .env          # add OPENAI_API_KEY (optional) + source tokens
 make install                  # core deps (no torch)
 make install-finbert          # add this when you want the local FinBERT model
 
@@ -77,7 +77,7 @@ defaulting to OpenAI `gpt-4o-mini`. Set `LANGCHAIN_TRACING_V2=true` for LangSmit
 | `GET`  | `/ticker/{symbol}` | sentiment history for one ticker |
 | `GET`  | `/brief` | latest synthesized briefing |
 
-## The ML loop (the part to talk about in interviews)
+## Training FinBERT: the class-imbalance problem
 
 ```bash
 # 1. Get labeled data — a public set (recommended, no scraping)…
@@ -131,7 +131,7 @@ Example run (200 held-out posts; LLMs zero-shot with a definitions + few-shot pr
 | gpt-4o-mini (0-shot) | 0.81 | 0.76 | 0.70 | 0.58 | 0.90 | 598 | 0.04 |
 | gpt-4o (0-shot) | 0.79 | 0.75 | **0.83** | 0.65 | 0.82 | 550 | 0.67 |
 
-Three findings worth stating in an interview:
+What the comparison shows:
 
 1. **The fine-tuned model wins** on accuracy and macro-F1 — while being free and ~7× faster.
    It learned this data's neutral-heavy base rates; the LLMs don't know them.
