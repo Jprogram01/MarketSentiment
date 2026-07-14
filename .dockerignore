@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+data/*.duckdb
+data/*.parquet
+data/raw
+models
+.env
+README.pdf

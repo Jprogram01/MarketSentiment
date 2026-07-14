@@ -1,0 +1,124 @@
+# MarketSentiment
+
+An **agentic social-sentiment pipeline** for financial markets. It ingests posts from
+online market-chatter spaces, extracts the tickers being discussed, classifies bullish
+/ bearish / neutral sentiment, aggregates it per stock, flags "hot" tickers by volume
+and momentum, and writes a short daily briefing.
+
+Orchestrated with **LangGraph**, with **FinBERT** as the sentiment workhorse and
+**Claude** (via `langchain-anthropic`) for ticker disambiguation and synthesis.
+
+> ⚠️ **Not investment advice.** This measures what the internet is *saying* about
+> stocks and how fast that's changing. It does not recommend trades and must not be
+> used as a trading signal.
+
+---
+
+## Why this design
+
+- **It's a data-engineering + NLP + MLOps system, not a chatbot.** The interview value
+  is the pipeline: pluggable ingestion, ticker disambiguation, a fine-tunable classifier,
+  aggregation/velocity, and a served + observable deployment.
+- **StockTwits is the anchor source** because users self-tag posts **Bullish/Bearish** —
+  free labeled financial-sentiment data. Harvest it, fine-tune FinBERT on it, and
+  evaluate. The class imbalance (chatter skews bullish) is the engineering story, the
+  same shape as a queen-vs-worker imbalance problem: data pipeline + weighted loss.
+- **LangGraph over a plain chain** because the flow branches and re-routes: low-confidence
+  FinBERT predictions escalate to the LLM, and synthesis only runs when there's something
+  to brief on. Shared, checkpointed state makes runs resumable and inspectable.
+- **X was descoped on purpose.** Its API is $100+/mo and scraping violates ToS, so
+  **Bluesky** is the open substitute. That's a mature engineering decision, documented.
+
+## Architecture
+
+```
+ sources (pluggable)            LangGraph pipeline
+┌───────────────────┐
+│ StockTwits  ✅     │   ingest ─▶ classify ─▶ aggregate ─┬─▶ synthesize ─▶ END
+│ 4chan /biz/ ✅     │─▶            │  │                    └───────────────▶ END
+│ Reddit      (stub)│              │  └─ low-confidence ──▶ LLM re-classify
+│ Bluesky     (stub)│              │                        (conditional)
+└───────────────────┘              ▼
+                          FinBERT  ·  Claude (langchain-anthropic)
+                                          │
+                        DuckDB  ◀─────────┘   FastAPI  ·  Docker  ·  LangSmith tracing
+```
+
+Sentiment score per ticker = `(bullish − bearish) / mentions ∈ [−1, 1]`. "Hot" =
+clears a mention floor and ranks high on volume × conviction, boosted by a volume spike
+vs. the previous run.
+
+## Quickstart
+
+```bash
+cp .env.example .env          # add ANTHROPIC_API_KEY (optional) + tokens
+make install                  # core deps (no torch)
+make install-finbert          # add this when you want the local FinBERT model
+
+# one pipeline pass (trending tickers), persisted to DuckDB
+python -m marketsentiment.scripts.run_pipeline --symbols NVDA TSLA GME
+
+# serve it
+make run                      # http://localhost:8000/docs
+# or: make docker
+```
+
+Runs on **FinBERT alone with no API key**. Set `ANTHROPIC_API_KEY` to enable the LLM
+low-confidence fallback + daily synthesis; set `LANGCHAIN_TRACING_V2=true` for LangSmith.
+
+### API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET`  | `/health` | liveness + whether the LLM is wired |
+| `POST` | `/run` `{ "symbols": ["NVDA"] }` | run one pass (omit `symbols` for trending) |
+| `GET`  | `/trending` | latest per-ticker sentiment, ranked by volume |
+| `GET`  | `/ticker/{symbol}` | sentiment history for one ticker |
+| `GET`  | `/brief` | latest synthesized briefing |
+
+## The ML loop (the part to talk about in interviews)
+
+```bash
+# 1. Harvest StockTwits self-labels → data/labeled.csv (free supervised data)
+python -m marketsentiment.scripts.harvest_labels --symbols AAPL NVDA TSLA --out data/labeled.csv
+
+# 2. Fine-tune FinBERT with class weights for the bullish/bearish imbalance (skeleton)
+python -m marketsentiment.scripts.train_finbert --data data/labeled.csv --out models/finbert-st
+
+# 3. Serve the fine-tuned checkpoint
+export MS_FINBERT_MODEL=models/finbert-st
+```
+
+Report **per-class recall** — the minority (bearish) class recall is what proves the
+imbalance handling worked. Compare fine-tuned FinBERT vs. the LLM zero-shot baseline
+(`MS_SENTIMENT_BACKEND=llm`) on cost / latency / accuracy.
+
+## Layout
+
+```
+src/marketsentiment/
+  config.py            env-driven settings
+  schemas.py           pydantic contract (RawPost, ClassifiedPost, TickerAggregate, HotStock)
+  ingestion/           Source ABC + stocktwits, fourchan (real), reddit, bluesky (stubs)
+  nlp/tickers.py       cashtag + known-ticker extraction w/ stoplist
+  sentiment/           SentimentClassifier protocol; finbert + llm backends
+  aggregation/         per-ticker scoring + hot-stock detection
+  graph/               LangGraph state, nodes, compiled pipeline
+  storage/db.py        DuckDB persistence
+  api/main.py          FastAPI service
+  runner.py            run-once + persist (shared by API and CLI)
+  scripts/             run_pipeline, harvest_labels, train_finbert
+tests/                 unit tests (ticker extraction, aggregation) — no heavy deps
+```
+
+## Roadmap
+
+- Wire the Reddit (PRAW) and Bluesky (atproto) sources — the ingestion layer is already
+  pluggable.
+- Promote the low-confidence LLM fallback + ticker disambiguation to explicit graph nodes.
+- Schedule daily runs (cron), swap `MemorySaver` for a persistent checkpointer.
+- Dashboard over the DuckDB aggregates.
+
+## License
+
+MIT
