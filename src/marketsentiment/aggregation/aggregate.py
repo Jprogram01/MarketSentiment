@@ -95,3 +95,38 @@ def _reason(agg: TickerAggregate, velocity: float | None) -> str:
     if velocity is not None and velocity > 0.5:
         parts.append(f"+{velocity:.0%} volume spike")
     return ", ".join(parts)
+
+
+def collect_examples(
+    classified: list[ClassifiedPost],
+    symbols: list[str],
+    per_ticker: int = 6,
+) -> dict[str, list[ClassifiedPost]]:
+    """Sample the actual posts behind each symbol so the digest can show *why* — favoring
+    the most confident posts and a spread across sentiment labels."""
+    wanted = set(symbols)
+    by_symbol: dict[str, list[ClassifiedPost]] = defaultdict(list)
+    for cp in classified:
+        for ticker in cp.tickers:
+            if ticker in wanted:
+                by_symbol[ticker].append(cp)
+
+    out: dict[str, list[ClassifiedPost]] = {}
+    for sym in symbols:
+        posts = sorted(by_symbol.get(sym, []), key=lambda c: c.sentiment.confidence, reverse=True)
+        picked: list[ClassifiedPost] = []
+        seen_ids: set[str] = set()
+        seen_labels: set[str] = set()
+        for cp in posts:  # one of each sentiment first, for variety
+            if cp.sentiment.label.value not in seen_labels:
+                picked.append(cp)
+                seen_ids.add(cp.post.id)
+                seen_labels.add(cp.sentiment.label.value)
+        for cp in posts:  # then fill by confidence
+            if len(picked) >= per_ticker:
+                break
+            if cp.post.id not in seen_ids:
+                picked.append(cp)
+                seen_ids.add(cp.post.id)
+        out[sym] = picked[:per_ticker]
+    return out

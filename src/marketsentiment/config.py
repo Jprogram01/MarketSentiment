@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     llm_model: str | None = None  # None -> per-provider default
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 2048  # synthesis writes a paragraph per hot ticker
 
     # --- Sources ---
     stocktwits_access_token: str | None = None

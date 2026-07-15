@@ -99,9 +99,14 @@ def make_aggregate_node(min_mentions: int, top_n: int):
 
 def make_synthesize_node(provider: str, model: str, max_tokens: int):
     def synthesize(state: PipelineState) -> PipelineState:
+        from marketsentiment.aggregation import collect_examples
         from marketsentiment.sentiment.llm import build_daily_brief
 
-        brief = build_daily_brief(state["aggregates"], state["hot"], provider, model, max_tokens)
+        # Surface the actual posts behind each hot ticker so the brief can explain the "why".
+        examples = collect_examples(state.get("classified", []), [h.symbol for h in state["hot"]])
+        brief = build_daily_brief(
+            state["aggregates"], state["hot"], examples, provider, model, max_tokens
+        )
         log.info("synthesize.done", chars=len(brief))
         return {"brief": brief}
 

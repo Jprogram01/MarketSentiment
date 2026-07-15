@@ -12,7 +12,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from marketsentiment.schemas import HotStock, Sentiment, SentimentResult, TickerAggregate
+from marketsentiment.schemas import (
+    ClassifiedPost,
+    HotStock,
+    Sentiment,
+    SentimentResult,
+    TickerAggregate,
+)
 
 _SENTIMENT_LABELS = {
     "bullish": Sentiment.BULLISH,
@@ -83,28 +89,39 @@ class LLMClassifier:
 def build_daily_brief(
     aggregates: list[TickerAggregate],
     hot: list[HotStock],
+    examples: dict[str, list[ClassifiedPost]] | None = None,
     provider: str = "openai",
     model: str = "gpt-4o-mini",
-    max_tokens: int = 1024,
+    max_tokens: int = 2048,
 ) -> str:
-    """Synthesis node: a short, descriptive market-sentiment briefing.
+    """Synthesis node: a per-ticker briefing that explains the WHY from the actual posts.
 
-    Descriptive by design — reports what chatter is saying and how fast it's moving.
-    NOT investment advice; must not recommend trades.
+    Descriptive by design — reports what chatter is saying and why. NOT investment advice.
     """
+    examples = examples or {}
     chat = _make_chat(provider, model, max_tokens)
-    hot_lines = "\n".join(
-        f"- ${h.symbol}: {h.n_mentions} mentions, score {h.sentiment_score:+.2f} ({h.reason})"
-        for h in hot
-    )
+
+    blocks = []
+    for h in hot:
+        posts = examples.get(h.symbol, [])
+        sample = "\n".join(
+            f"    [{cp.sentiment.label.value}] {cp.post.text.strip()[:160]}" for cp in posts
+        ) or "    (no sample posts)"
+        blocks.append(
+            f"${h.symbol} — {h.n_mentions} mentions, score {h.sentiment_score:+.2f}\n{sample}"
+        )
+    body = "\n\n".join(blocks) or "(no hot tickers today)"
+
     prompt = (
-        "You are a market-sentiment analyst. For EACH ticker below, write one line: the "
-        "ticker, the company name and a few words on what it does, then the retail "
-        "sentiment read citing the numbers (mentions + score). If you are NOT confident "
-        "what a ticker refers to, write '(company unclear)' instead of guessing. After the "
-        "per-ticker lines, add a one-sentence overall takeaway. Keep it tight. This is "
-        "sentiment measurement, NOT investment advice — do not recommend trades.\n\n"
-        f"Tickers:\n{hot_lines}\n"
+        "You are a market-sentiment analyst. For EACH ticker below you have its stats and a "
+        "sample of the actual posts. Write one short paragraph per ticker covering: (1) the "
+        "ticker and company — what it does; (2) the sentiment read, citing mentions + score; "
+        "(3) most important — WHY people are saying it, drawn from the sample posts (the real "
+        "themes: earnings, a product/deal, hype, fear, a catalyst). Paraphrase the chatter and "
+        "you may quote a short phrase. If a ticker is unclear or the posts are just noise/spam, "
+        "say so instead of inventing a reason. Finish with a one-sentence overall takeaway. "
+        "This is sentiment measurement, NOT investment advice — no buy/sell/hold calls.\n\n"
+        + body
     )
     resp = chat.invoke(prompt)
     return resp.content if isinstance(resp.content, str) else str(resp.content)

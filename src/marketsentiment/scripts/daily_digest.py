@@ -23,27 +23,54 @@ log = get_logger(__name__)
 
 def _format_email(state) -> tuple[str, str]:
     """Build (plain-text, html) email bodies from the pipeline state."""
+    import html as _html
+
+    from marketsentiment.aggregation import collect_examples
+
     brief = state.get("brief") or "No brief today (no hot tickers cleared the threshold)."
     hot = state.get("hot", [])
+    examples = collect_examples(state.get("classified", []), [h.symbol for h in hot], per_ticker=3)
 
+    # --- plain text ---
     text_lines = [brief, "", "Hot tickers:"]
     text_lines += [
         f"  ${h.symbol}: {h.n_mentions} mentions, score {h.sentiment_score:+.2f} ({h.reason})"
         for h in hot
     ] or ["  (none)"]
+    text_lines += ["", "Sample chatter:"]
+    for h in hot:
+        posts = examples.get(h.symbol, [])
+        if not posts:
+            continue
+        text_lines.append(f"  ${h.symbol}")
+        text_lines += [
+            f"    [{cp.sentiment.label.value}] {cp.post.text.strip()[:160]}" for cp in posts
+        ]
     text = "\n".join(text_lines)
 
+    # --- html ---
     rows = "".join(
         f"<tr><td>${h.symbol}</td><td>{h.n_mentions}</td>"
-        f"<td>{h.sentiment_score:+.2f}</td><td>{h.reason}</td></tr>"
+        f"<td>{h.sentiment_score:+.2f}</td><td>{_html.escape(h.reason)}</td></tr>"
         for h in hot
     )
+    chatter = ""
+    for h in hot:
+        posts = examples.get(h.symbol, [])
+        if not posts:
+            continue
+        items = "".join(
+            f"<li><em>[{cp.sentiment.label.value}]</em> {_html.escape(cp.post.text.strip()[:200])}</li>"
+            for cp in posts
+        )
+        chatter += f"<p style='margin:8px 0 2px'><b>${h.symbol}</b></p><ul style='margin:0'>{items}</ul>"
     html = (
         f"<h2>Daily Market Sentiment — {date.today().isoformat()}</h2>"
-        f"<p>{brief.replace(chr(10), '<br>')}</p>"
+        f"<p>{_html.escape(brief).replace(chr(10), '<br>')}</p>"
         "<table cellpadding='6' cellspacing='0' border='1' style='border-collapse:collapse'>"
         "<tr><th>Ticker</th><th>Mentions</th><th>Score</th><th>Why</th></tr>"
         f"{rows}</table>"
+        f"<h3>Sample chatter</h3>{chatter}"
         "<p style='color:#888;font-size:12px'>Sentiment measurement, not investment advice.</p>"
     )
     return text, html
