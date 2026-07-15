@@ -34,8 +34,9 @@ Resources:
       Architectures: [x86_64]
       Environment:
         Variables:
-          MS_SENTIMENT_BACKEND: finbert
+          MS_SENTIMENT_BACKEND: ensemble            # FinBERT + LLM weighted vote
           MS_FINBERT_MODEL: /opt/model              # the model bundled into the image
+          MS_FINBERT_WEIGHT: "0.6"                  # ensemble weight toward FinBERT
           MS_HOT_MIN_MENTIONS: "3"                  # lower threshold -> more tickers shown
           MS_HOT_TOP_N: "20"
           MS_DB_PATH: /tmp/marketsentiment.duckdb   # Lambda fs is read-only except /tmp

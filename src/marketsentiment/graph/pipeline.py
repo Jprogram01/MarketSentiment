@@ -85,17 +85,29 @@ def build_default_graph(settings: Settings):
     model = settings.resolved_model()
     llm_available = settings.llm_enabled()
 
-    if settings.sentiment_backend == "llm" and llm_available:
+    backend = settings.sentiment_backend
+    llm_classifier = None
+    classifier: SentimentClassifier
+
+    if backend == "ensemble" and llm_available:
+        from marketsentiment.sentiment.ensemble import EnsembleClassifier
+        from marketsentiment.sentiment.finbert import FinBERTClassifier
         from marketsentiment.sentiment.llm import LLMClassifier
 
-        classifier: SentimentClassifier = LLMClassifier(provider, model)
-        llm_classifier = None  # already the primary
+        classifier = EnsembleClassifier(
+            FinBERTClassifier(settings.finbert_model),
+            LLMClassifier(provider, model),
+            settings.finbert_weight,
+        )
+    elif backend == "llm" and llm_available:
+        from marketsentiment.sentiment.llm import LLMClassifier
+
+        classifier = LLMClassifier(provider, model)
     else:
         from marketsentiment.sentiment.finbert import FinBERTClassifier
 
         classifier = FinBERTClassifier(settings.finbert_model)
-        llm_classifier = None
-        if llm_available:
+        if llm_available:  # low-confidence fallback for the finbert backend
             from marketsentiment.sentiment.llm import LLMClassifier
 
             llm_classifier = LLMClassifier(provider, model)

@@ -29,9 +29,10 @@ class Settings(BaseSettings):
     reddit_user_agent: str = "market-sentiment/0.1"
 
     # --- Sentiment ---
-    sentiment_backend: str = "finbert"  # "finbert" | "llm"
+    sentiment_backend: str = "finbert"  # "finbert" | "llm" | "ensemble"
     finbert_model: str = "ProsusAI/finbert"
     low_confidence_threshold: float = 0.55
+    finbert_weight: float = 0.6  # ensemble backend only: weight on FinBERT vs. the LLM
 
     # --- Aggregation ---
     hot_min_mentions: int = 5
